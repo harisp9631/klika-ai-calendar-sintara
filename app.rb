@@ -2,28 +2,61 @@ require 'sinatra'
 require 'pg'
 require 'json'
 require 'dotenv/load'
+require 'openai'
+require_relative 'db'
+require_relative 'functions/my_next_vacation'
+require_relative 'functions/my_general_info'
+require_relative 'functions/my_teams_vacations'
 
 set :port, ENV['PORT'] if ENV['PORT']
 
-post '/user' do
+post '/ai-function' do
   content_type :json
   request_payload = JSON.parse(request.body.read) rescue {}
-  email = request_payload['email']
+  context = request_payload['Context'] || request_payload['context']
+  prompt = request_payload['prompt']
 
-  halt 400, { error: 'Email is required' }.to_json unless email
+  halt 400, { error: 'Context and prompt are required' }.to_json unless context && prompt
 
-  conn = db_connection
-  result = conn.exec_params('SELECT * FROM users WHERE email = $1 LIMIT 1', [email])
-  user = result.first
-  conn.close
+  openai_client = OpenAI::Client.new(access_token: ENV['OPENAI_API_KEY'])
 
-  if user
-    user.to_json
+  system_prompt = <<~PROMPT
+    You are an intelligent function router. Given a user's context and prompt, decide which of the following functions should be called:
+    - my_next_vacation
+    - my_general_info
+    - my_teams_vacations
+    Only return the function name as a string, nothing else.
+  PROMPT
+
+  messages = [
+    { role: "system", content: system_prompt },
+    { role: "user", content: "Context: #{context}, prompt: #{prompt}" }
+  ]
+
+  response = openai_client.chat(
+    parameters: {
+      model: "gpt-3.5-turbo",
+      messages: messages,
+      max_tokens: 10,
+      temperature: 0
+    }
+  )
+
+  function_name = response.dig("choices", 0, "message", "content")&.strip
+
+  function_map = {
+    "my_next_vacation" => MyNextVacation,
+    "my_general_info" => MyGeneralInfo,
+    "my_teams_vacations" => MyTeamsVacations
+  }
+
+  if function_name && function_map[function_name]
+    result = function_map[function_name].call(context)
+    { function: function_name, result: result }.to_json
   else
-    halt 404, { error: 'User not found' }.to_json
+    halt 422, { error: 'Could not determine function' }.to_json
   end
-end 
-
+end
 
 def db_connection
   PG.connect(ENV['DATABASE_URL'])
