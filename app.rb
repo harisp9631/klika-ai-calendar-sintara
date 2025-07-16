@@ -18,7 +18,7 @@ post '/ai-function' do
 
   halt 400, { error: 'Context and prompt are required' }.to_json unless context && prompt
 
-  openai_client = OpenAI::Client.new(access_token: ENV['OPENAI_API_KEY'])
+  openai_client = OpenAI::Client.new(api_key: ENV['OPENAI_API_KEY'])
 
   system_prompt = <<~PROMPT
     You are an intelligent function router. Given a user's context and prompt, decide which of the following functions should be called:
@@ -33,16 +33,12 @@ post '/ai-function' do
     { role: "user", content: "Context: #{context}, prompt: #{prompt}" }
   ]
 
-  response = openai_client.chat(
-    parameters: {
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      max_tokens: 10,
-      temperature: 0
-    }
+  response = openai_client.chat.completions.create(
+    messages: messages,
+    model: "gpt-4.1"
   )
 
-  function_name = response.dig("choices", 0, "message", "content")&.strip
+  function_name = response.choices[0][:message][:content]&.strip
 
   function_map = {
     "my_next_vacation" => MyNextVacation,
@@ -52,10 +48,11 @@ post '/ai-function' do
 
   if function_name && function_map[function_name]
     result = function_map[function_name].call(context)
-    { function: function_name, result: result }.to_json
   else
-    halt 422, { error: 'Could not determine function' }.to_json
+    result = { message: "Could not determine function" }
   end
+
+  result[:message]
 end
 
 def db_connection
