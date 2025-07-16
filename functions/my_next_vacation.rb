@@ -1,6 +1,14 @@
 class MyNextVacation
   def self.call(context)
-    # TODO: Implement actual logic
-    { message: "Placeholder for my_next_vacation" }
+    email = context["email"]
+
+    result = DB.get_next_vacation(email)
+
+    absence = result.first
+    if absence
+      { message: "Your next vacation starts on #{DateFormatter.format(absence['start_date'])} and ends on #{DateFormatter.format(absence['end_date'])}." }
+    else
+      { message: "No upcoming vacations found." }
+    end
   end
-end 
+end

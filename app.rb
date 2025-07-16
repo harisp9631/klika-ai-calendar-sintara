@@ -7,6 +7,7 @@ require_relative 'db'
 require_relative 'functions/my_next_vacation'
 require_relative 'functions/my_general_info'
 require_relative 'functions/my_teams_vacations'
+require_relative 'date_formatter'
 
 set :port, ENV['PORT'] if ENV['PORT']
 
@@ -53,8 +54,4 @@ post '/ai-function' do
   end
 
   result[:message]
-end
-
-def db_connection
-  PG.connect(ENV['DATABASE_URL'])
 end
